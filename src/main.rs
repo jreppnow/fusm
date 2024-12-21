@@ -85,6 +85,11 @@ impl Instruction {
 
                 println!("Finished function id={function_id}..");
             }
+            Instruction::Drop => {
+                let Some(StackEntry::Value(_)) = stack.pop() else {
+                    panic!("Illegal drop, can only drop data frames.");
+                };
+            }
         }
     }
 }
@@ -144,6 +149,7 @@ fn main() {
                 Instruction::Sub(TypeDeclaration::I32),
                 Instruction::Const(ValueType::I32(13)),
                 Instruction::Eq(TypeDeclaration::I32),
+                Instruction::Drop,
             ],
             label: Some("main".to_owned()),
         })],
