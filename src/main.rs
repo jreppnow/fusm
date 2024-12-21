@@ -2,29 +2,89 @@ use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy)]
 pub enum TypeDeclaration {
-    I64,
+    // I64,
     I32,
-    F64,
-    F32,
+    // F64,
+    // F32,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValueType {
-    I64(i64),
+    // I64(i64),
     I32(i32),
-    F64(f64),
-    F32(f32),
+    // F64(f64),
+    // F32(f32),
 }
 
 #[derive(Debug)]
 enum Instruction {
     Nop,
+    Const(ValueType),
+    Add(TypeDeclaration),
+    Sub(TypeDeclaration),
+    Eq(TypeDeclaration),
+    Call(usize),
+    Drop,
 }
 
 impl Instruction {
-    pub fn execute(&self, stack: &mut Stack) {
+    pub fn execute(&self, stack: &mut Stack, module: &ModuleDeclaration) {
         match self {
             Instruction::Nop => {}
+            Instruction::Const(value) => stack.push(StackEntry::Value(*value)),
+            Instruction::Add(t) => {
+                let (
+                    Some(StackEntry::Value(ValueType::I32(c2))),
+                    Some(StackEntry::Value(ValueType::I32(c1))),
+                ) = (stack.pop(), stack.pop())
+                else {
+                    panic!("Stack must contain two operands of type {t:?}");
+                };
+
+                stack.push(StackEntry::Value(ValueType::I32(c1 + c2)))
+            }
+            Instruction::Sub(t) => {
+                let (
+                    Some(StackEntry::Value(ValueType::I32(c2))),
+                    Some(StackEntry::Value(ValueType::I32(c1))),
+                ) = (stack.pop(), stack.pop())
+                else {
+                    panic!("Stack must contain two operands of type {t:?}");
+                };
+
+                stack.push(StackEntry::Value(ValueType::I32(c1 - c2)))
+            }
+            Instruction::Eq(t) => {
+                let (
+                    Some(StackEntry::Value(ValueType::I32(c2))),
+                    Some(StackEntry::Value(ValueType::I32(c1))),
+                ) = (stack.pop(), stack.pop())
+                else {
+                    panic!("Stack must contain two operands of type {t:?}");
+                };
+
+                stack.push(StackEntry::Value(ValueType::I32((c2 == c1) as i32)))
+            }
+            Instruction::Call(function_id) => {
+                println!("Calling function id={function_id}..");
+
+                let declaration = &module.functions[*function_id];
+                stack.push(StackEntry::Function(FunctionFrame {
+                    declaration: Arc::clone(declaration),
+                }));
+
+                for instruction in &declaration.instructions {
+                    println!("Running instruction: {instruction:?}");
+                    instruction.execute(stack, module);
+                    println!("Completed instruction, stack state: {stack:?}");
+                }
+
+                let Some(StackEntry::Function(FunctionFrame { .. })) = stack.pop() else {
+                    panic!("function frame must stil be there..");
+                };
+
+                println!("Finished function id={function_id}..");
+            }
         }
     }
 }
@@ -43,15 +103,18 @@ struct FunctionFrame {
     declaration: Arc<FunctionDeclaration>,
 }
 
+#[derive(Debug)]
 struct ModuleDeclaration {
     functions: Vec<Arc<FunctionDeclaration>>,
 }
 
+#[derive(Debug)]
 struct ModuleInstance {
     memory: Vec<u8>,
     declaration: Arc<ModuleDeclaration>,
 }
 
+#[derive(Debug)]
 enum StackEntry {
     Function(FunctionFrame),
     Value(ValueType),
@@ -61,15 +124,8 @@ type Stack = Vec<StackEntry>;
 
 impl ModuleInstance {
     fn run(&mut self, index: usize) {
-        let declaration = &self.declaration.functions[index];
-
-        let mut stack = vec![StackEntry::Function(FunctionFrame {
-            declaration: Arc::clone(declaration),
-        })];
-
-        for instruction in &declaration.instructions {
-            instruction.execute(&mut stack);
-        }
+        let mut stack = Vec::new();
+        Instruction::Call(index).execute(&mut stack, &self.declaration);
     }
 }
 
@@ -79,7 +135,16 @@ fn main() {
             parameters: vec![],
             locals: vec![],
             return_value: None,
-            instructions: vec![Instruction::Nop],
+            instructions: vec![
+                Instruction::Nop,
+                Instruction::Const(ValueType::I32(32)),
+                Instruction::Const(ValueType::I32(23)),
+                Instruction::Add(TypeDeclaration::I32),
+                Instruction::Const(ValueType::I32(42)),
+                Instruction::Sub(TypeDeclaration::I32),
+                Instruction::Const(ValueType::I32(13)),
+                Instruction::Eq(TypeDeclaration::I32),
+            ],
             label: Some("main".to_owned()),
         })],
     };
