@@ -136,23 +136,33 @@ impl ModuleInstance {
 
 fn main() {
     let declaration = ModuleDeclaration {
-        functions: vec![Arc::new(FunctionDeclaration {
-            parameters: vec![],
-            locals: vec![],
-            return_value: None,
-            instructions: vec![
-                Instruction::Nop,
-                Instruction::Const(ValueType::I32(32)),
-                Instruction::Const(ValueType::I32(23)),
-                Instruction::Add(TypeDeclaration::I32),
-                Instruction::Const(ValueType::I32(42)),
-                Instruction::Sub(TypeDeclaration::I32),
-                Instruction::Const(ValueType::I32(13)),
-                Instruction::Eq(TypeDeclaration::I32),
-                Instruction::Drop,
-            ],
-            label: Some("main".to_owned()),
-        })],
+        functions: vec![
+            Arc::new(FunctionDeclaration {
+                parameters: vec![],
+                locals: vec![],
+                return_value: None,
+                instructions: vec![
+                    Instruction::Nop,
+                    Instruction::Const(ValueType::I32(32)),
+                    Instruction::Const(ValueType::I32(23)),
+                    Instruction::Add(TypeDeclaration::I32),
+                    Instruction::Const(ValueType::I32(42)),
+                    Instruction::Sub(TypeDeclaration::I32),
+                    Instruction::Const(ValueType::I32(13)),
+                    Instruction::Eq(TypeDeclaration::I32),
+                    Instruction::Drop,
+                    Instruction::Call(1),
+                ],
+                label: Some("main".to_owned()),
+            }),
+            Arc::new(FunctionDeclaration {
+                parameters: vec![],
+                locals: vec![],
+                return_value: None,
+                instructions: vec![Instruction::Nop],
+                label: Some("main".to_owned()),
+            }),
+        ],
     };
 
     let mut instance = ModuleInstance {
