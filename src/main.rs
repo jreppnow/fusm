@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{i32, sync::Arc};
 
 #[derive(Debug, Clone, Copy)]
 pub enum TypeDeclaration {
@@ -33,11 +33,22 @@ enum Instruction {
     Call(usize),
     Drop,
     GetLocal(usize),
+    Load(TypeDeclaration),
+    Store(TypeDeclaration),
+    MemorySize,
+    MemoryGrow,
     SetLocal(usize),
 }
 
+const PAGE_SIZE: usize = 65536;
+
 impl Instruction {
-    pub fn execute(&self, stack: &mut Stack, module: &ModuleDeclaration, locals: &mut [ValueType]) {
+    pub fn execute(
+        &self,
+        stack: &mut Stack,
+        module: &mut ModuleInstance,
+        locals: &mut [ValueType],
+    ) {
         match self {
             Instruction::Nop => {}
             Instruction::Const(value) => stack.push(StackEntry::Value(*value)),
@@ -77,7 +88,7 @@ impl Instruction {
             Instruction::Call(function_id) => {
                 println!("Calling function id={function_id}..");
 
-                let declaration = &module.functions[*function_id];
+                let declaration = Arc::clone(&module.declaration.functions[*function_id]);
 
                 let mut locals = declaration
                     .parameters
@@ -101,7 +112,7 @@ impl Instruction {
                 }
 
                 stack.push(StackEntry::Function(FunctionFrame {
-                    declaration: Arc::clone(declaration),
+                    declaration: Arc::clone(&declaration),
                 }));
 
                 for instruction in &declaration.instructions {
@@ -147,6 +158,67 @@ impl Instruction {
 
                 locals[*idx] = value;
             }
+            Instruction::Load(_) => {
+                // TODO: other types
+                let Some(StackEntry::Value(ValueType::I32(addr))) = stack.pop() else {
+                    panic!("load instruction requires address as top of stack value");
+                };
+
+                assert!(addr >= 0, "Cannot access negative addresses.");
+
+                let addr = addr as usize;
+
+                if module.memory.len() < addr + size_of::<i32>() {
+                    panic!("access to invalid memory address attempted");
+                }
+
+                // TODO: endianness??
+                stack.push(StackEntry::Value(ValueType::I32(i32::from_be_bytes(
+                    module.memory[addr..addr + size_of::<i32>()]
+                        .try_into()
+                        .expect("bounds are correct"),
+                ))));
+            }
+            Instruction::Store(_) => {
+                // TODO: different types
+                let Some(StackEntry::Value(ValueType::I32(value))) = stack.pop() else {
+                    panic!("store instruction requires value to be stored on top of the stack")
+                };
+
+                // this one is always i32
+                let Some(StackEntry::Value(ValueType::I32(addr))) = stack.pop() else {
+                    panic!("store instruction requires value to be stored on top of the stack")
+                };
+
+                assert!(addr >= 0, "negative memory addresses are not allowed");
+
+                let addr = addr as usize;
+
+                if module.memory.len() < addr + size_of_val(&value) {
+                    panic!("memory does not have enough capacity to store value");
+                }
+
+                module.memory[addr..addr + size_of_val(&value)]
+                    .swap_with_slice(&mut value.to_be_bytes());
+            }
+            Instruction::MemorySize => stack.push(StackEntry::Value(ValueType::I32(
+                (module.memory.len() / PAGE_SIZE) as i32,
+            ))),
+            Instruction::MemoryGrow => {
+                let Some(StackEntry::Value(ValueType::I32(page_count))) = stack.pop() else {
+                    panic!("must specify the amount of pages as i32 on top of the stack");
+                };
+
+                assert!(page_count >= 0, "cannot reduce page count");
+
+                let new_len = module.memory.len() + (page_count as usize * PAGE_SIZE);
+
+                if new_len > i32::MAX as usize {
+                    panic!("cannot represent memory that big");
+                }
+
+                module.memory.resize(new_len, 0);
+            }
         }
     }
 }
@@ -188,7 +260,7 @@ impl ModuleInstance {
     fn run(&mut self, index: usize) {
         let mut stack = Vec::new();
         let mut locals = Vec::new();
-        Instruction::Call(index).execute(&mut stack, &self.declaration, &mut locals[..]);
+        Instruction::Call(index).execute(&mut stack, self, &mut locals[..]);
     }
 }
 
@@ -210,6 +282,16 @@ fn main() {
                     Instruction::Eq(TypeDeclaration::I32),
                     Instruction::Const(ValueType::I32(23)),
                     Instruction::Call(1),
+                    Instruction::Drop,
+                    Instruction::Const(ValueType::I32(1)),
+                    Instruction::MemoryGrow,
+                    Instruction::MemorySize,
+                    Instruction::Drop,
+                    Instruction::Const(ValueType::I32(0)),
+                    Instruction::Const(ValueType::I32(500)),
+                    Instruction::Store(TypeDeclaration::I32),
+                    Instruction::Const(ValueType::I32(0)),
+                    Instruction::Load(TypeDeclaration::I32),
                     Instruction::Drop,
                 ],
                 label: Some("main".to_owned()),
