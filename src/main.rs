@@ -7,6 +7,13 @@ pub enum TypeDeclaration {
     // F64,
     // F32,
 }
+impl TypeDeclaration {
+    fn default_value(&self) -> ValueType {
+        match self {
+            TypeDeclaration::I32 => ValueType::I32(0),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValueType {
@@ -28,7 +35,7 @@ enum Instruction {
 }
 
 impl Instruction {
-    pub fn execute(&self, stack: &mut Stack, module: &ModuleDeclaration) {
+    pub fn execute(&self, stack: &mut Stack, module: &ModuleDeclaration, locals: &mut [ValueType]) {
         match self {
             Instruction::Nop => {}
             Instruction::Const(value) => stack.push(StackEntry::Value(*value)),
@@ -69,13 +76,32 @@ impl Instruction {
                 println!("Calling function id={function_id}..");
 
                 let declaration = &module.functions[*function_id];
+
+                let mut locals = declaration
+                    .parameters
+                    .iter()
+                    .map(|t| {
+                        // TODO: type checking
+                        let Some(StackEntry::Value(v)) = stack.pop() else {
+                            panic!("Tried to invoce function, but could not find parameter of type {t:?}!");
+                        };
+
+                        v
+                    })
+                .rev()
+                    .collect::<Vec<_>>();
+
+                for local in &declaration.locals {
+                    locals.push(local.default_value());
+                }
+
                 stack.push(StackEntry::Function(FunctionFrame {
                     declaration: Arc::clone(declaration),
                 }));
 
                 for instruction in &declaration.instructions {
                     println!("Running instruction: {instruction:?}");
-                    instruction.execute(stack, module);
+                    instruction.execute(stack, module, &mut locals[..]);
                     println!("Completed instruction, stack state: {stack:?}");
                 }
 
@@ -143,7 +169,8 @@ type Stack = Vec<StackEntry>;
 impl ModuleInstance {
     fn run(&mut self, index: usize) {
         let mut stack = Vec::new();
-        Instruction::Call(index).execute(&mut stack, &self.declaration);
+        let mut locals = Vec::new();
+        Instruction::Call(index).execute(&mut stack, &self.declaration, &mut locals[..]);
     }
 }
 
@@ -163,18 +190,18 @@ fn main() {
                     Instruction::Sub(TypeDeclaration::I32),
                     Instruction::Const(ValueType::I32(13)),
                     Instruction::Eq(TypeDeclaration::I32),
-                    Instruction::Drop,
+                    Instruction::Const(ValueType::I32(23)),
                     Instruction::Call(1),
                     Instruction::Drop,
                 ],
                 label: Some("main".to_owned()),
             }),
             Arc::new(FunctionDeclaration {
-                parameters: vec![],
+                parameters: vec![TypeDeclaration::I32, TypeDeclaration::I32],
                 locals: vec![],
                 return_value: Some(TypeDeclaration::I32),
                 instructions: vec![Instruction::Const(ValueType::I32(42))],
-                label: Some("main".to_owned()),
+                label: Some("hoge".to_owned()),
             }),
         ],
     };
