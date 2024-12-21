@@ -79,9 +79,22 @@ impl Instruction {
                     println!("Completed instruction, stack state: {stack:?}");
                 }
 
+                let ret_val = declaration.return_value.map(|value| {
+                    // TODO: check for types!
+                    let Some(v @ StackEntry::Value(_)) = stack.pop() else {
+                        panic!("Function is expected to return a value of type {value:?}");
+                    };
+
+                    v
+                });
+
                 let Some(StackEntry::Function(FunctionFrame { .. })) = stack.pop() else {
                     panic!("function frame must stil be there..");
                 };
+
+                if let Some(ret_val) = ret_val {
+                    stack.push(ret_val);
+                }
 
                 println!("Finished function id={function_id}..");
             }
@@ -152,14 +165,15 @@ fn main() {
                     Instruction::Eq(TypeDeclaration::I32),
                     Instruction::Drop,
                     Instruction::Call(1),
+                    Instruction::Drop,
                 ],
                 label: Some("main".to_owned()),
             }),
             Arc::new(FunctionDeclaration {
                 parameters: vec![],
                 locals: vec![],
-                return_value: None,
-                instructions: vec![Instruction::Nop],
+                return_value: Some(TypeDeclaration::I32),
+                instructions: vec![Instruction::Const(ValueType::I32(42))],
                 label: Some("main".to_owned()),
             }),
         ],
