@@ -32,6 +32,8 @@ enum Instruction {
     Eq(TypeDeclaration),
     Call(usize),
     Drop,
+    GetLocal(usize),
+    SetLocal(usize),
 }
 
 impl Instruction {
@@ -83,12 +85,15 @@ impl Instruction {
                     .map(|t| {
                         // TODO: type checking
                         let Some(StackEntry::Value(v)) = stack.pop() else {
-                            panic!("Tried to invoce function, but could not find parameter of type {t:?}!");
+                            panic!(
+                                "Tried to invoke function, \
+                                but could not find parameter of type {t:?}!"
+                            );
                         };
 
                         v
                     })
-                .rev()
+                    .rev()
                     .collect::<Vec<_>>();
 
                 for local in &declaration.locals {
@@ -128,6 +133,19 @@ impl Instruction {
                 let Some(StackEntry::Value(_)) = stack.pop() else {
                     panic!("Illegal drop, can only drop data frames.");
                 };
+            }
+            Instruction::GetLocal(idx) => {
+                stack.push(StackEntry::Value(locals[*idx]));
+            }
+            Instruction::SetLocal(idx) => {
+                let Some(StackEntry::Value(value)) = stack.pop() else {
+                    panic!("Cannot push non-existing value to local variables.")
+                };
+
+                // TODO: From looking at the spec, it does not seem like there is type-checking
+                //       here.. Which seems strange at least.
+
+                locals[*idx] = value;
             }
         }
     }
@@ -200,7 +218,11 @@ fn main() {
                 parameters: vec![TypeDeclaration::I32, TypeDeclaration::I32],
                 locals: vec![],
                 return_value: Some(TypeDeclaration::I32),
-                instructions: vec![Instruction::Const(ValueType::I32(42))],
+                instructions: vec![
+                    Instruction::GetLocal(0),
+                    Instruction::GetLocal(1),
+                    Instruction::Add(TypeDeclaration::I32),
+                ],
                 label: Some("hoge".to_owned()),
             }),
         ],
